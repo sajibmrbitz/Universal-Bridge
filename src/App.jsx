@@ -3,7 +3,7 @@ import Webcam from 'react-webcam';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // ⚠️ তোমার Google API Key এখানে বসাও (ডাবল কোটেশনের ভিতরে)
-const API_KEY = "EIKHANE_TOMAR_API_KEY_BOSHAO"; 
+const API_KEY = "AIzaSyDqS4t7SrjZf8BRW2eMf3eL2GoELWg6APg"; 
 
 const genAI = new GoogleGenerativeAI(API_KEY);
 
