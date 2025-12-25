@@ -1,124 +1,160 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Webcam from 'react-webcam';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// ⚠️ তোমার Google API Key এখানে বসাও (ডাবল কোটেশনের ভিতরে)
-const API_KEY = "AIzaSyDqS4t7SrjZf8BRW2eMf3eL2GoELWg6APg"; 
+// 🗣️ Voice to Text & Text to Voice Helpers
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const recognition = new SpeechRecognition();
 
-const genAI = new GoogleGenerativeAI(API_KEY);
+recognition.continuous = true;
+recognition.interimResults = true;
+recognition.lang = 'en-US'; // Change to 'bn-BD' for Bangla
 
 function App() {
+  const [mode, setMode] = useState("HOME"); // HOME, BLIND, MUTE
+  const [transcript, setTranscript] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [inputText, setInputText] = useState("");
+  
   const webcamRef = useRef(null);
-  const [status, setStatus] = useState("Ready to Guide");
-  const [aiResponse, setAiResponse] = useState("Path is clear");
-  const [isGuiding, setIsGuiding] = useState(false);
 
-  // অটো-গাইড লজিক (এখন প্রতি ২.৫ সেকেন্ড পর পর চেক করবে - Fast Mode)
+  // 🎤 Speech to Text Logic (Blind User speaks)
+  const toggleListening = () => {
+    if (isListening) {
+      recognition.stop();
+      setIsListening(false);
+    } else {
+      recognition.start();
+      setIsListening(true);
+    }
+  };
+
   useEffect(() => {
-    let intervalId;
-    if (isGuiding) {
-      intervalId = setInterval(() => {
-        captureAndAnalyze();
-      }, 2500); // 2.5 Seconds Loop
-    }
-    return () => clearInterval(intervalId);
-  }, [isGuiding]);
+    recognition.onresult = (event) => {
+      const current = event.resultIndex;
+      const transcriptText = event.results[current][0].transcript;
+      setTranscript(transcriptText);
+    };
+  }, []);
 
-  const captureAndAnalyze = async () => {
-    if (webcamRef.current) {
-      const imageSrc = webcamRef.current.getScreenshot();
-      if (imageSrc) {
-        setStatus("Scanning...");
-        await askGemini(imageSrc);
-      }
-    }
-  };
-
-  const askGemini = async (base64Image) => {
-    try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      
-      // 🔥 আপডেটেড কড়া প্রম্পট (Strict Mode)
-      const prompt = `
-        Analyze this image strictly for a blind person's navigation. 
-        Focus ONLY on the immediate path (ground level) in front.
-        
-        1. If the path ahead is clear and safe to walk, output ONLY: "CLEAR".
-        2. If there is ANY obstacle (chair, table, wall, stairs, person, door) blocking the way, output: "STOP: [Name of Obstacle]".
-        
-        Do not describe background items. Be paranoid about safety. Keep it extremely short (max 3 words).
-      `;
-
-      const imagePart = {
-        inlineData: {
-          data: base64Image.split(",")[1],
-          mimeType: "image/jpeg",
-        },
-      };
-
-      const result = await model.generateContent([prompt, imagePart]);
-      const text = result.response.text();
-      
-      // টেক্সট ক্লিন করা
-      const cleanText = text.replace(/\*/g, '').trim();
-
-      setAiResponse(cleanText);
-      setStatus("Guiding...");
-      speak(cleanText);
-
-    } catch (error) {
-      console.log("Error analyzing path", error);
-      setStatus("Retrying...");
-    }
-  };
-
-  const speak = (text) => {
-    window.speechSynthesis.cancel(); // আগের কথা থামিয়ে নতুন কথা বলবে
+  // 🔊 Text to Speech Logic (App speaks for Mute User)
+  const speakText = (text) => {
+    if (!text) return;
+    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.3; // একটু দ্রুত বলবে
+    utterance.lang = 'en-US';
+    utterance.rate = 1.0;
     window.speechSynthesis.speak(utterance);
   };
 
-  return (
-    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4 font-sans">
-      <h1 className="text-4xl font-bold mb-2 text-yellow-400">Vision Guide 🦮</h1>
-      <p className="text-gray-400 mb-6">Blind Assist Navigation</p>
-      
-      <div className="relative border-4 border-gray-700 rounded-2xl overflow-hidden shadow-2xl w-full max-w-md bg-gray-900">
-        {/* ক্যামেরা */}
-        <Webcam 
-          ref={webcamRef} 
-          screenshotFormat="image/jpeg"
-          className="w-full opacity-90"
-          videoConstraints={{ facingMode: "environment" }} 
-        />
-        
-        {/* স্ট্যাটাস বার (উপরে) */}
-        <div className="absolute top-0 w-full bg-black/60 p-2 text-center">
-           <p className="text-yellow-300 font-mono animate-pulse text-sm">{status}</p>
-        </div>
+  // --- UI COMPONENTS ---
 
-        {/* রেজাল্ট বার (নিচে) */}
-        <div className="absolute bottom-0 w-full bg-blue-900/95 p-4 text-center min-h-[80px] flex items-center justify-center border-t-2 border-blue-500">
-          <p className="text-2xl font-bold text-white uppercase tracking-wider">{aiResponse}</p>
+  // 1. Home Screen (Select User Type)
+  if (mode === "HOME") {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6 text-white text-center">
+        <h1 className="text-5xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+          Universal Bridge 🌉
+        </h1>
+        <p className="text-gray-400 mb-10">Connecting Voice, Text & Sign</p>
+
+        <div className="grid gap-6 w-full max-w-md">
+          <button 
+            onClick={() => setMode("BLIND")}
+            className="p-8 bg-blue-600 rounded-2xl shadow-lg hover:bg-blue-500 transition text-2xl font-bold flex items-center justify-center gap-3"
+          >
+            👁️‍🗨️ I am Blind <span className="text-sm font-normal block">(Voice Mode)</span>
+          </button>
+
+          <button 
+            onClick={() => setMode("MUTE")}
+            className="p-8 bg-purple-600 rounded-2xl shadow-lg hover:bg-purple-500 transition text-2xl font-bold flex items-center justify-center gap-3"
+          >
+            👋 I am Mute <span className="text-sm font-normal block">(Sign Mode)</span>
+          </button>
         </div>
       </div>
+    );
+  }
 
-      {/* স্টার্ট/স্টপ বাটন */}
-      <button 
-        onClick={() => setIsGuiding(!isGuiding)}
-        className={`mt-8 px-10 py-5 rounded-full text-2xl font-bold shadow-lg transition transform active:scale-95 ${
-          isGuiding ? 'bg-red-600 hover:bg-red-700 animate-pulse' : 'bg-green-600 hover:bg-green-700'
-        }`}
-      >
-        {isGuiding ? "🛑 STOP GUIDING" : "🚶 START WALKING"}
-      </button>
+  // 2. Blind Mode (Voice Input -> Shows Text)
+  if (mode === "BLIND") {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col p-4">
+        <button onClick={() => setMode("HOME")} className="text-left text-gray-400 mb-4">⬅ Back</button>
+        
+        <h2 className="text-3xl font-bold text-blue-400 mb-6">Listening Mode 👂</h2>
+        
+        {/* Output Display (Big Text for Mute person to see) */}
+        <div className="flex-grow border-2 border-gray-700 rounded-xl p-6 flex items-center justify-center bg-gray-900">
+          <p className="text-4xl text-center font-mono text-yellow-300">
+            {transcript || "Tap Mic & Speak..."}
+          </p>
+        </div>
 
-      <p className="mt-5 text-gray-500 text-xs text-center px-5 max-w-xs">
-        Tip: Point camera forward. AI scans for obstacles every 2.5 seconds.
-      </p>
-    </div>
-  );
+        {/* Mic Control */}
+        <div className="mt-8 flex justify-center">
+          <button 
+            onClick={toggleListening}
+            className={`w-24 h-24 rounded-full flex items-center justify-center text-4xl shadow-2xl transition ${
+              isListening ? 'bg-red-500 animate-pulse' : 'bg-blue-600'
+            }`}
+          >
+            {isListening ? '🛑' : '🎤'}
+          </button>
+        </div>
+        <p className="text-center mt-4 text-gray-500">{isListening ? "Listening..." : "Tap to Speak"}</p>
+      </div>
+    );
+  }
+
+  // 3. Mute Mode (Camera/Text Input -> Speaks Audio)
+  if (mode === "MUTE") {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col p-4">
+        <button onClick={() => setMode("HOME")} className="text-left text-gray-400 mb-4">⬅ Back</button>
+        
+        <h2 className="text-3xl font-bold text-purple-400 mb-4">Sign/Text Mode 👋</h2>
+
+        {/* Camera Feed (Future: Sign Language Detection) */}
+        <div className="relative w-full h-64 bg-gray-800 rounded-xl overflow-hidden mb-4 border border-purple-500">
+          <Webcam
+            ref={webcamRef}
+            className="w-full h-full object-cover opacity-80"
+            mirror={true}
+          />
+          <div className="absolute bottom-2 left-2 bg-black/50 px-2 rounded text-xs">
+            🤖 AI Gesture: Waiting...
+          </div>
+        </div>
+
+        {/* Quick Text Input (Alternative Bridge) */}
+        <div className="flex flex-col gap-3">
+          <textarea 
+            className="w-full p-4 bg-gray-800 rounded-lg text-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+            rows="3"
+            placeholder="Type or use gestures..."
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+          />
+          
+          <button 
+            onClick={() => speakText(inputText)}
+            className="w-full py-4 bg-green-600 rounded-xl text-xl font-bold hover:bg-green-500 transition shadow-lg"
+          >
+            🔊 Speak to Blind User
+          </button>
+        </div>
+
+        {/* Quick Responses */}
+        <div className="grid grid-cols-2 gap-2 mt-4">
+          <button onClick={() => speakText("Yes")} className="bg-gray-700 p-3 rounded">✅ Yes</button>
+          <button onClick={() => speakText("No")} className="bg-gray-700 p-3 rounded">❌ No</button>
+          <button onClick={() => speakText("Hello")} className="bg-gray-700 p-3 rounded">👋 Hello</button>
+          <button onClick={() => speakText("Thank You")} className="bg-gray-700 p-3 rounded">🙏 Thanks</button>
+        </div>
+      </div>
+    );
+  }
 }
 
 export default App;
